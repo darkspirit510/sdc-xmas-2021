@@ -58,13 +58,13 @@ After this, create the admin account and install
 
 - Without persistence, openHAB just keeps values in RAM
 - On startup, all values are undefined
-  - If set, openHAB will receive all values via persistence
-  - openHAB will receive/update values from provider (channel), if possible
+    - If set, openHAB will receive all values via persistence
+    - openHAB will receive/update values from provider (channel), if possible
 - openHAB offers several persistence bindings for different use cases
-  - RRD4J: Round robin, stores a series of values. It has a fixed size and will replace the oldest value if the limit is
-    reached.
-  - MapDB: Just like Java map, it's a simple, builtin key-value store. Useful for restoring values on boot up.
-  - Multiple database integrations (MongoDB, DynamoDB, MySQL, MariaDB, InfluxDB, ...)
+    - RRD4J: Round robin, stores a series of values. It has a fixed size and will replace the oldest value if the limit
+      is reached.
+    - MapDB: Just like Java map, it's a simple, builtin key-value store. Useful for restoring values on boot up.
+    - Multiple database integrations (MongoDB, DynamoDB, MySQL, MariaDB, InfluxDB, ...)
 - It is possible to use multiple persistence addons with different configuration
 
 ### jdbc.cfg
@@ -80,6 +80,7 @@ tableIdDigitCount=0
 ```
 
 ### mapdb.persist
+
 ```
 Strategies {
         default = everyUpdate
@@ -91,6 +92,7 @@ Items {
 ```
 
 ### jdbc.persist
+
 ```
 Strategies {
     everyFiveMinutes : "0 */5 * * * ?"
@@ -122,6 +124,7 @@ Number StarTankstelleFallersleben_Diesel    "Diesel [%.3f €]"   <oil>  (StoreE
 HTTP binding allows to add endpoints as Things (I'm not using this) or simply send HTTP requests within rules.
 
 ### GET-Request
+
 ```
 rule "Toggle docking station"
 
@@ -177,7 +180,7 @@ Bridge mqtt:broker: MqttBroker @ "Installation room" [
 ] {
 Thing topic Raspberry "Raspberry" @ "Wohnzimmer" {
   Channels:
-    Type number: watt "Watt" [stateTopic="sdc-xmas-2021/temp"]
+    Type number: temperature "Temperature" [ stateTopic="sdc-xmas-2021/temp" ]
   }
 
   Thing topic Robbie "Robbie" @ "Living Room" {
@@ -192,6 +195,74 @@ Thing topic Raspberry "Raspberry" @ "Wohnzimmer" {
 }
 ```
 
+Note: Transformations are available after installation.
+
 ## openHAB Item(s)
 
+```
+Number Raspberry_Temperature "Temperature" { channel="mqtt:topic:MqttBroker:Raspberry:temperature" }
+
+String Robbie_Command { channel="mqtt:topic:MqttBroker:Robbie:state" }
+
+Switch Arbeitszimmer_Schreibtisch_Schalter "Docking Station state" { channel="mqtt:topic:MqttBroker:ShellyOffice:switch1" }
+```
+
+Source: [openHAB docs - MQTT Binding](https://www.openhab.org/addons/bindings/mqtt.generic/)
+
 # Topic 4 - Notifications
+
+Can be accomplished via several ways. I prefer telegram because it has a great bot API and a stable, reliable plugin. If
+you want to use this way, [create your bot first](https://core.telegram.org/bots#creating-a-new-bot). This section could
+also be done via Slack (or any other HTTP) notification. openHAB also supports crazy stuff like sending E-Mail or even
+low-level things like RS232. But why would anyone want to do this?
+
+## telegram.cfg
+
+```
+#
+# Read http://www.instructables.com/id/Telegram-Bots-for-beginners/
+# to see how to set up bots and find your chat ids
+#
+
+bots=botSascha,botGroup
+
+# bot1.chatId=22334455
+# bot1.token=xxxxxx
+
+# bot2.chatId=654321
+# bot2.token=yyyyyyyyyyy
+
+botSascha.chatId=12345678
+botSascha.token=12345678:abcdABCDabcdABCDabcdABCDabcdABCD
+
+botGroup.chatId=-12345678
+botGroup.token=12345678:abcdABCDabcdABCDabcdABCDabcdABCD
+```
+
+## dishwasher.rules
+
+```
+rule "Dishwasher done"
+
+when
+  Item Kitchen_Shelly_Dishwasher_Wattage changed to 0
+then
+  Thread::sleep(90000)
+
+  if(Kitchen_Shelly_Dishwasher_Wattage.maximumSince(now.minusSeconds(89), "jdbc").state == 0) {
+    getActions("telegram", "telegram:telegramBot:TelegramBot").sendTelegram(-12341234L, "Dishwasher has finished!")
+  }
+end
+```
+
+## robbie.rules
+
+```
+rule "Robbie finished cleaning"
+
+when
+    Item Robbie_Command changed from "returning" to "docked"
+then
+    getActions("telegram", "telegram:telegramBot:TelegramBot").sendTelegramPhoto(-12341234L, "http://192.168.1.156:8803/api/map/image", "Robbie ist fertig!")
+end
+```
